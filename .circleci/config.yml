@@ -153,6 +153,29 @@ jobs:
           name: Run Tests
           command: go test ./...
 
+  smoke_test:
+    <<: *go_build
+    environment:
+      KUBECONFIG: $HOME/.kube/config #is this needed?
+
+    steps:
+      - checkout
+      - <<: *restore_go_cache
+      - <<: *go_mod_download
+      - <<: *save_go_cache
+      - run:
+          name: get kind
+          command: env GO111MODULE=off go get sigs.k8s.io/kind
+      - run:
+          name: Create kind cluster
+          command: kind create cluster
+      - run:
+          name: print cluster info
+          command: kubectl cluster-info
+      - run:
+          name: Run Tests
+          command: ./skupper_smoke #set kubeconfig as parameter if needed
+
   publish-github-release:
     docker:
       - image: cibuilds/github:0.10
