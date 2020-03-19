@@ -1,16 +1,14 @@
 package main
 
 import (
-	//"context"
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -20,6 +18,47 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
+
+func int32Ptr(i int32) *int32 { return &i }
+
+var deployment *appsv1.Deployment = &appsv1.Deployment{
+	TypeMeta: metav1.TypeMeta{
+		APIVersion: "apps/v1",
+		Kind:       "Deployment",
+	},
+	ObjectMeta: metav1.ObjectMeta{
+		Name: "tcp-go-echo",
+	},
+	Spec: appsv1.DeploymentSpec{
+		Replicas: int32Ptr(1),
+		Selector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{"application": "tcp-go-echo"},
+		},
+		Template: apiv1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"application": "tcp-go-echo",
+				},
+			},
+			Spec: apiv1.PodSpec{
+				Containers: []apiv1.Container{
+					{
+						Name:            "tcp-go-echo",
+						Image:           "quay.io/skupper/tcp-go-echo",
+						ImagePullPolicy: apiv1.PullIfNotPresent,
+						Ports: []apiv1.ContainerPort{
+							{
+								Name:          "http",
+								Protocol:      apiv1.ProtocolTCP,
+								ContainerPort: 80,
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+}
 
 func sendReceive(ip string) {
 	strEcho := "Halo"
@@ -45,14 +84,43 @@ func sendReceive(ip string) {
 	}
 	conn.Close()
 
-	println("===== Sent to server=", strings.ToUpper(strEcho))
-	println("===== Reply from server=", string(reply))
+	log.Println("Sent to server = ", strEcho)
+	log.Println("Reply from server = ", string(reply))
 
 	if !strings.Contains(string(reply), strings.ToUpper(strEcho)) {
 		log.Fatalf("Response from server different that expected: %s", string(reply))
 	}
 }
 
+type ClusterContext struct {
+	Namespace         string
+	ClusterConfigFile string
+	Clientset         *kubernetes.Clientset
+}
+
+type SmokeTestRunner struct {
+	PubCluster  *ClusterContext
+	PrivCluster *ClusterContext
+}
+
+func BuildClusterContext(namespace string, configFile string) *ClusterContext {
+	cc := &ClusterContext{}
+	cc.Namespace = namespace
+	cc.ClusterConfigFile = configFile
+
+	config, err := clientcmd.BuildConfigFromFlags("", configFile)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	cc.Clientset, err = kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	return cc
+}
+
+//TODO look for nicer way to execute in golang
 func _exec(command string) {
 	fmt.Println(command)
 	output, err := exec.Command("sh", "-c", command).CombinedOutput()
@@ -63,63 +131,88 @@ func _exec(command string) {
 	fmt.Println(string(output))
 }
 
-func _setup(clientset *kubernetes.Clientset) {
-	//publicNsSpec := &apiv1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "public"}}
-	//privateNsSpec := &apiv1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "private"}}
+func (cc *ClusterContext) exec(main_command string, sub_command string) {
+	_exec("KUBECONFIG=" + cc.ClusterConfigFile + " " + main_command + " " + cc.Namespace + " " + sub_command)
+}
 
-	//deploymentsClient := clientset.AppsV1().Deployments(apiv1.NamespaceDefault)
-	//_, err = clientset.CoreV1().Namespaces().Create(publicNsSpec)
-	//if err != nil {
-	//panic(err)
-	//}
+func (cc *ClusterContext) skupper_exec(command string) {
+	cc.exec("./skupper -n ", command)
+}
 
-	//_, err = clientset.CoreV1().Namespaces().Create(privateNsSpec)
-	//if err != nil {
-	//panic(err)
-	//}
+func (cc *ClusterContext) kubectl_exec(command string) {
+	cc.exec("kubectl -n ", command)
+}
 
-	publicDeploymentsClient := clientset.AppsV1().Deployments("public")
-
-	deployment := &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "Deployment",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "tcp-go-echo",
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(1),
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"application": "tcp-go-echo"},
-			},
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"application": "tcp-go-echo",
-					},
-				},
-				Spec: apiv1.PodSpec{
-					Containers: []apiv1.Container{
-						{
-							Name:            "tcp-go-echo",
-							Image:           "quay.io/skupper/tcp-go-echo",
-							ImagePullPolicy: apiv1.PullIfNotPresent,
-							Ports: []apiv1.ContainerPort{
-								{
-									Name:          "http",
-									Protocol:      apiv1.ProtocolTCP,
-									ContainerPort: 80,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+func (cc *ClusterContext) createNamespace() {
+	NsSpec := &apiv1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: cc.Namespace}}
+	_, err := cc.Clientset.CoreV1().Namespaces().Create(NsSpec)
+	if err != nil {
+		log.Fatal(err.Error())
 	}
+}
 
-	//result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
+func (cc *ClusterContext) deleteNamespace() {
+	err := cc.Clientset.CoreV1().Namespaces().Delete(cc.Namespace, &metav1.DeleteOptions{})
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+}
+
+func (cc *ClusterContext) DescribePods() {
+
+}
+
+func (cc *ClusterContext) GetService(name string, timeout_S time.Duration) *apiv1.Service {
+	timeout := time.After(timeout_S * time.Second)
+	tick := time.Tick(3 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			log.Fatalln("Timed Out Waiting for service.")
+		case <-tick:
+			service, err := cc.Clientset.CoreV1().Services(cc.Namespace).Get(name, metav1.GetOptions{})
+			if err == nil {
+				return service
+			} else {
+				log.Println("Service not ready yet, current pods state: ")
+				cc.kubectl_exec("get pods -o wide") //TODO use clientset
+			}
+
+		}
+	}
+}
+
+func (r *SmokeTestRunner) buildForTcpEchoTest(publicConficFile, privateConfigFile string) {
+	r.PubCluster = BuildClusterContext("public", publicConficFile)
+	r.PrivCluster = BuildClusterContext("private", privateConfigFile)
+}
+
+func (r *SmokeTestRunner) _runTcpEchoTest() {
+	var publicService *apiv1.Service
+	var privateService *apiv1.Service
+	const _1_minute time.Duration = 60
+
+	//TODO deduplicate
+	r.PubCluster.kubectl_exec("get svc")
+	r.PrivCluster.kubectl_exec("get svc")
+
+	publicService = r.PubCluster.GetService("tcp-go-echo", 10*_1_minute)
+	privateService = r.PrivCluster.GetService("tcp-go-echo", 3*_1_minute)
+
+	fmt.Printf("Public service ClusterIp = %q\n", publicService.Spec.ClusterIP)
+	fmt.Printf("Private service ClusterIp = %q\n", privateService.Spec.ClusterIP)
+
+	sendReceive(publicService.Spec.ClusterIP)
+	sendReceive(privateService.Spec.ClusterIP)
+}
+
+func (r *SmokeTestRunner) setupTcpEchoTest() {
+
+	r.PubCluster.createNamespace()
+	r.PrivCluster.createNamespace()
+
+	publicDeploymentsClient := r.PubCluster.Clientset.AppsV1().Deployments("public")
+
 	fmt.Println("Creating deployment...")
 	result, err := publicDeploymentsClient.Create(deployment)
 	if err != nil {
@@ -127,127 +220,65 @@ func _setup(clientset *kubernetes.Clientset) {
 	}
 	fmt.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
 
-	//TODO, wait for deployment state ready here?
-
 	fmt.Printf("Listing deployments in namespace %q:\n", "public")
 	list, err := publicDeploymentsClient.List(metav1.ListOptions{})
 	if err != nil {
-		panic(err)
+		log.Fatal(err.Error())
 	}
 	for _, d := range list.Items {
 		fmt.Printf(" * %s (%d replicas)\n", d.Name, *d.Spec.Replicas)
 	}
 
-	prompt("enter to start skupper magic..")
+	r.PubCluster.skupper_exec("init --cluster-local")
+	r.PubCluster.skupper_exec("expose --port 9090 deployment tcp-go-echo")
+	r.PubCluster.skupper_exec("connection-token /tmp/public_secret.yaml")
 
-	//test launching skupper before deployment ready
+	r.PrivCluster.skupper_exec("init --cluster-local")
+	r.PrivCluster.skupper_exec("connect /tmp/public_secret.yaml")
 
-	_exec("./skupper -n public init --cluster-local")
-	_exec("./skupper -n public expose --port 9090 deployment tcp-go-echo")
-	_exec("./skupper -n public connection-token /tmp/public_secret.yaml")
-
-	_exec("./skupper -n private init --cluster-local")
-	_exec("./skupper -n private connect /tmp/public_secret.yaml")
 }
 
-func _teardown(clientset *kubernetes.Clientset) {
-	publicDeploymentsClient := clientset.AppsV1().Deployments("public")
+func (r *SmokeTestRunner) tearDownTcpEchoTest() {
+	//since this is going to run in a spawned ci vm (then destroyed) probably
+	//tearDown is not so important
+	publicDeploymentsClient := r.PubCluster.Clientset.AppsV1().Deployments("public")
 	fmt.Println("Deleting deployment...")
 	deletePolicy := metav1.DeletePropagationForeground
 	if err := publicDeploymentsClient.Delete("tcp-go-echo", &metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}); err != nil {
-		panic(err)
+		log.Fatal(err.Error())
 	}
 	fmt.Println("Deleted deployment.")
 
-	_exec("./skupper -n private delete")
-	_exec("./skupper -n public delete")
+	r.PubCluster.skupper_exec("delete")
+	r.PrivCluster.skupper_exec("delete")
 
-	//err = clientset.CoreV1().Namespaces().Delete("public", &metav1.DeleteOptions{})
-	//if err != nil {
-	//panic(err)
-	//}
-
-	//err = clientset.CoreV1().Namespaces().Delete("private", &metav1.DeleteOptions{})
-	//if err != nil {
-	//panic(err)
-	//}
+	//r.deleteNamespaces()??
+	r.PubCluster.deleteNamespace()
+	r.PrivCluster.deleteNamespace()
 }
 
-//func initClientSet() *kubernetes.Clientset {
-func initClientSet() {
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kub    econfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.Parse()
-	fmt.Printf("=====%v\n", *kubeconfig)
-
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		panic(err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err)
-	}
-
-	//_setup(clientset)
-
-	_exec("kubectl -n private get svc")
-	_exec("kubectl -n public get svc")
-
-	//use "defer" for teardown
-	//wait for:
-	//kubectl -n public get svc
-	//skupper-internal    ClusterIP   10.101.122.178   <none>        55671/TCP,45671/TCP   7m1s
-	//skupper-messaging   ClusterIP   10.97.86.132     <none>        5671/TCP              7m1s
-	//tcp-go-echo         ClusterIP   10.100.232.217   <none>        9090/TCP              34s
-
-	//test tcp cliento, for public and private tcp-go-echo service
-
-	prompt("setup completed, next run echo-test")
-	var publicService *apiv1.Service
-	var privateService *apiv1.Service
-	publicService, err = clientset.CoreV1().Services("public").Get("tcp-go-echo", metav1.GetOptions{})
-	if err != nil {
-		panic(err)
-	}
-
-	privateService, err = clientset.CoreV1().Services("private").Get("tcp-go-echo", metav1.GetOptions{})
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("======public ClusterIp = %q\n", publicService.Spec.ClusterIP)
-	fmt.Printf("======private ClusterIp = %q\n", privateService.Spec.ClusterIP)
-	fmt.Printf("======public\n")
-	sendReceive(publicService.Spec.ClusterIP)
-	fmt.Printf("======private\n")
-	sendReceive(privateService.Spec.ClusterIP)
-
-	prompt("enter to teardown")
-	//_teardown(clientset)
+func (r *SmokeTestRunner) runTcpEchoTest() {
+	defer r.tearDownTcpEchoTest()
+	r.setupTcpEchoTest()
+	r._runTcpEchoTest()
 }
 
 func main() {
-	initClientSet()
-}
+	testRunner := &SmokeTestRunner{}
 
-func int32Ptr(i int32) *int32 { return &i }
+	defaultKubeConfig := filepath.Join(homedir.HomeDir(), ".kube", "config")
 
-func prompt(message string) {
-	fmt.Printf("%s\nPress Return key to continue.\n", message)
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		break
-	}
-	if err := scanner.Err(); err != nil {
-		panic(err)
-	}
-	fmt.Println()
+	pubKubeconfig := flag.String("pubkubeconfig", defaultKubeConfig, "(optional) absolute path to the kubeconfig file")
+	privKubeconfig := flag.String("privkubeconfig", defaultKubeConfig, "(optional) absolute path to the kubeconfig file")
+	flag.Parse()
+
+	testRunner.buildForTcpEchoTest(*pubKubeconfig, *privKubeconfig)
+
+	log.Printf("using public kubeconfig %v\n", *pubKubeconfig)
+	log.Printf("using private kubeconfig %v\n", *privKubeconfig)
+
+	testRunner._runTcpEchoTest()
+	//testRunner.runTcpEchoTest()
 }
