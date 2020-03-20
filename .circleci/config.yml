@@ -158,7 +158,7 @@ jobs:
       - setup_remote_docker
       - run:
           name: Create kind cluster
-          command: kind create cluster
+          command: kind create cluster --wait 30m
       - run:
           name: print environment
           command: printenv
