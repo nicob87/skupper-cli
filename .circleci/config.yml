@@ -169,6 +169,7 @@ jobs:
       - run:
           name: get kind
           command: env GO111MODULE=off go get sigs.k8s.io/kind
+      - setup_remote_docker
       - run:
           name: Create kind cluster
           command: kind create cluster
