@@ -157,8 +157,8 @@ jobs:
           command: env GO111MODULE=off go get sigs.k8s.io/kind
       - setup_remote_docker
       - run:
-          name: Create kind cluster
-          command: kind create cluster --wait 30m
+          name: Create kind clusterr
+          command: kind create cluster --wait 30m #bla
       - run:
           name: print environment
           command: printenv
