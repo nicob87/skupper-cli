@@ -1,5 +1,5 @@
 orbs:
-  gke: circleci/gcp-gke@x.y.z
+  gke: circleci/gcp-gke@1.0.3
 version: 2.1
 workflows:
   main:
