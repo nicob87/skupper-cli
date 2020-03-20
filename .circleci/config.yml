@@ -145,7 +145,7 @@ jobs:
   smoke_test:
     <<: *go_build
     environment:
-      KUBECONFIG: $HOME/.kube/config #is this needed?
+      KUBECONFIG: /home/circleci/.kube/config #is this needed?
 
     steps:
       - checkout
@@ -156,9 +156,9 @@ jobs:
           name: get kind
           command: env GO111MODULE=off go get sigs.k8s.io/kind
       - setup_remote_docker
-      #- run:
-          #name: Create kind cluster
-          #command: kind create cluster
+      - run:
+          name: Create kind cluster
+          command: kind create cluster
       - run:
           name: print environment
           command: printenv
