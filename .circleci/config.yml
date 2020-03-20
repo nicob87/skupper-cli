@@ -7,7 +7,21 @@ workflows:
       - gke/create-cluster:
           cluster: gcp-testing
       #- gke/install
-      - run:
-          name: print cluster info
-          command: kubectl cluster-info
+
+      #- smoke_test:
+        #docker:
+          #- image: circleci/golang:1.13
+        #environment: &environment
+          #GOOS: linux
+          #GOARCH: amd64
+          #PLATFORM: linux-amd64
+          #KUBECONFIG: /home/circleci/.kube/config #is this needed?
+        #steps:
+          #- checkout
+          #- run:
+              #name: 
+              #command: kubectl cluster-info
+          #- run:
+              #name: print cluster info
+              #command: kubectl cluster-info
 
