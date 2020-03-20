@@ -143,15 +143,21 @@ jobs:
           command: go test ./...
 
   smoke_test:
-    <<: *go_build
-    environment:
+    docker:
+      - image: circleci/golang:1.13
+    environment: &environment
+      GOOS: linux
+      GOARCH: amd64
+      PLATFORM: linux-amd64
       KUBECONFIG: /home/circleci/.kube/config #is this needed?
-
     steps:
       - checkout
       - <<: *restore_go_cache
       - <<: *go_mod_download
       - <<: *save_go_cache
+      - run:
+          name: compile
+          command: make && ./skupper_smoke
       - run:
           name: get kind
           command: env GO111MODULE=off go get sigs.k8s.io/kind
@@ -164,7 +170,7 @@ jobs:
           command: printenv
       - run:
           name: trying to install kubectl
-          command: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.4/bin/linux/amd64/kubectl && mkdir -p /home/circleci/bin && mv kubectl /home/circleci/bin/ && chmod +x /home/circleci/bin/kubectl
+          command: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.4/bin/linux/amd64/kubectl && mkdir -p ~/bin && mv kubectl ~/bin/ && chmod +x ~/bin/kubectl
       - run:
           name: print cluster info
           command: kubectl cluster-info
