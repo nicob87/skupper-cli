@@ -175,6 +175,9 @@ jobs:
             sudo tar -xvf go1.13.3.linux-amd64.tar.gz
             sudo rm -rf /usr/local/go && sudo mv go /usr/local
       - run:
+          name: print go version
+          command: go version
+      - run:
           name: get kind
           command: env GO111MODULE=off go get sigs.k8s.io/kind
       - run:
@@ -189,9 +192,9 @@ jobs:
       - run:
           name: print cluster info
           command: kubectl cluster-info
-      #- run:
-          #name: Run Tests
-          #command: ./skupper_smoke #set kubeconfig as parameter if needed
+      - run:
+          name: Run Tests
+          command: ./skupper_smoke #set kubeconfig as parameter if needed
 
   publish-github-release:
     docker:
