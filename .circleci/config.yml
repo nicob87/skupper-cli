@@ -147,8 +147,7 @@ jobs:
           command: go test ./...
 
   smoke_test:
-    machine:
-      image: ubuntu-1604:201903-01
+    machine: true
     environment: &environment
       KUBECONFIG: /home/circleci/.kube/config
     steps:
@@ -162,39 +161,27 @@ jobs:
       - run:
           name: print go version
           command: go version
-      - run:
-          name: wget
-          command: wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz
-      - run:
-          name: print environment
-          command: printenv
-      - run:
-          name: print environment
-          command: printenv
-      - run:
-          name: print environment
-          command: printenv
-      - run:
-          name: print environment
-          command: printenv
-      - run:
-          name: print go version
-          command: go version
-      - run:
-          name: Download Go Modules
-          command: go mod download
-      - run:
-          name: compile
-          command: make
       #- run:
-          #name: get kind
-          #command: env GO111MODULE=off go get sigs.k8s.io/kind
+          #name: wget
+          #command: wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz
       #- run:
-          #name: Create kind clusterr
-          #command: kind create cluster --wait 30m #bla
+          #name: Download Go Modules
+          #command: go mod download
       #- run:
-          #name: trying to install kubectl
-          #command: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.4/bin/linux/amd64/kubectl && mkdir -p ~/bin && mv kubectl ~/bin/ && chmod +x ~/bin/kubectl
+          #name: compile
+          #command: make
+      - run:
+          name: print kubectl help
+          command: kubectl help
+      - run:
+          name: get kind
+          command: env GO111MODULE=off go get sigs.k8s.io/kind
+      - run:
+          name: Create kind clusterr
+          command: kind create cluster --wait 30m #bla
+      - run:
+          name: trying to install kubectl
+          command: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.4/bin/linux/amd64/kubectl && mkdir -p ~/bin && mv kubectl ~/bin/ && chmod +x ~/bin/kubectl
       - run:
           name: print cluster info
           command: kubectl cluster-info
