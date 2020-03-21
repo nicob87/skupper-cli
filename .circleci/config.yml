@@ -169,8 +169,6 @@ jobs:
           name: print go version
           command: go version
       - run:
-          name: wget
-      - run:
           name: install go 1.13
           command: |
             wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz
