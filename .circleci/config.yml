@@ -153,6 +153,15 @@ jobs:
     steps:
       - checkout
       - run:
+          name: print environment
+          command: printenv
+      - run:
+          name: print go version
+          command: go version
+      - run:
+          name: Download Go Modules
+          command: go mod download
+      - run:
           name: compile
           command: make
       #- run:
@@ -161,9 +170,6 @@ jobs:
       #- run:
           #name: Create kind clusterr
           #command: kind create cluster --wait 30m #bla
-      - run:
-          name: print environment
-          command: printenv
       #- run:
           #name: trying to install kubectl
           #command: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.4/bin/linux/amd64/kubectl && mkdir -p ~/bin && mv kubectl ~/bin/ && chmod +x ~/bin/kubectl
