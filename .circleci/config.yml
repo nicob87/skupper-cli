@@ -156,6 +156,27 @@ jobs:
           name: print environment
           command: printenv
       - run:
+          name: uname
+          command: uname -a
+      - run:
+          name: print go version
+          command: go version
+      - run:
+          name: wget
+          command: wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz
+      - run:
+          name: print environment
+          command: printenv
+      - run:
+          name: print environment
+          command: printenv
+      - run:
+          name: print environment
+          command: printenv
+      - run:
+          name: print environment
+          command: printenv
+      - run:
           name: print go version
           command: go version
       - run:
