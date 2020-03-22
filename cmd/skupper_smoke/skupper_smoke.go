@@ -304,6 +304,6 @@ func main() {
 	log.Printf("using public kubeconfig %v\n", *pubKubeconfig)
 	log.Printf("using private kubeconfig %v\n", *privKubeconfig)
 
-	//testRunner._runTcpEchoTest()
+	////testRunner._runTcpEchoTest()
 	testRunner.runTcpEchoTest()
 }
