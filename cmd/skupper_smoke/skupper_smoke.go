@@ -21,6 +21,8 @@ import (
 
 func int32Ptr(i int32) *int32 { return &i }
 
+const minute time.Duration = 60
+
 var deployment *appsv1.Deployment = &appsv1.Deployment{
 	TypeMeta: metav1.TypeMeta{
 		APIVersion: "apps/v1",
@@ -60,9 +62,9 @@ var deployment *appsv1.Deployment = &appsv1.Deployment{
 	},
 }
 
-func sendReceive(ip string) {
+func sendReceive(servAddr string) {
 	strEcho := "Halo"
-	servAddr := ip + ":9090"
+	//servAddr := ip + ":9090"
 	tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
 	if err != nil {
 		log.Fatalln("ResolveTCPAddr failed:", err.Error())
@@ -121,9 +123,17 @@ func BuildClusterContext(namespace string, configFile string) *ClusterContext {
 }
 
 //TODO look for nicer way to execute in golang
-func _exec(command string) {
+func _exec(command string, wait bool) {
+	var output []byte
+	var err error
 	fmt.Println(command)
-	output, err := exec.Command("sh", "-c", command).CombinedOutput()
+	cmd := exec.Command("sh", "-c", command)
+	if wait {
+		output, err = cmd.CombinedOutput()
+	} else {
+		cmd.Start()
+		return
+	}
 	if err != nil {
 		panic(err)
 		//os.Stderr.WriteString(err.Error())
@@ -131,16 +141,24 @@ func _exec(command string) {
 	fmt.Println(string(output))
 }
 
-func (cc *ClusterContext) exec(main_command string, sub_command string) {
-	_exec("KUBECONFIG=" + cc.ClusterConfigFile + " " + main_command + " " + cc.Namespace + " " + sub_command)
+func (cc *ClusterContext) exec(main_command string, sub_command string, wait bool) {
+	_exec("KUBECONFIG="+cc.ClusterConfigFile+" "+main_command+" "+cc.Namespace+" "+sub_command, wait)
 }
 
 func (cc *ClusterContext) skupper_exec(command string) {
-	cc.exec("./skupper -n ", command)
+	cc.exec("./skupper -n ", command, true)
+}
+
+func (cc *ClusterContext) _kubectl_exec(command string, wait bool) {
+	cc.exec("kubectl -n ", command, wait)
 }
 
 func (cc *ClusterContext) kubectl_exec(command string) {
-	cc.exec("kubectl -n ", command)
+	cc._kubectl_exec(command, true)
+}
+
+func (cc *ClusterContext) kubectl_exec_async(command string) {
+	cc._kubectl_exec(command, false)
 }
 
 func (cc *ClusterContext) createNamespace() {
@@ -190,24 +208,27 @@ func (r *SmokeTestRunner) buildForTcpEchoTest(publicConficFile, privateConfigFil
 func (r *SmokeTestRunner) _runTcpEchoTest() {
 	var publicService *apiv1.Service
 	var privateService *apiv1.Service
-	const _1_minute time.Duration = 60
 
 	//TODO deduplicate
 	r.PubCluster.kubectl_exec("get svc")
 	r.PrivCluster.kubectl_exec("get svc")
 
-	publicService = r.PubCluster.GetService("tcp-go-echo", 10*_1_minute)
-	privateService = r.PrivCluster.GetService("tcp-go-echo", 3*_1_minute)
+	publicService = r.PubCluster.GetService("tcp-go-echo", minute)
+	privateService = r.PrivCluster.GetService("tcp-go-echo", minute)
 
 	fmt.Printf("Public service ClusterIp = %q\n", publicService.Spec.ClusterIP)
 	fmt.Printf("Private service ClusterIp = %q\n", privateService.Spec.ClusterIP)
 
-	sendReceive(publicService.Spec.ClusterIP)
-	sendReceive(privateService.Spec.ClusterIP)
+	//sendReceive(publicService.Spec.ClusterIP + ":9090")
+	//sendReceive(privateService.Spec.ClusterIP + ":9090")
+
+	r.PubCluster.kubectl_exec_async("port-forward service/tcp-go-echo 9090:9090")
+	r.PrivCluster.kubectl_exec_async("port-forward service/tcp-go-echo 9091:9090")
+	sendReceive("127.0.0.1:9090")
+	sendReceive("127.0.0.1:9091")
 }
 
 func (r *SmokeTestRunner) setupTcpEchoTest() {
-
 	r.PubCluster.createNamespace()
 	r.PrivCluster.createNamespace()
 
@@ -236,6 +257,8 @@ func (r *SmokeTestRunner) setupTcpEchoTest() {
 	r.PrivCluster.skupper_exec("init --cluster-local")
 	r.PrivCluster.skupper_exec("connect /tmp/public_secret.yaml")
 
+	r.PubCluster.GetService("tcp-go-echo", 10*minute)
+	r.PrivCluster.GetService("tcp-go-echo", 3*minute)
 }
 
 func (r *SmokeTestRunner) tearDownTcpEchoTest() {
