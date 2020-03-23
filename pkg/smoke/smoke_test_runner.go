@@ -14,7 +14,7 @@ import (
 )
 
 type SmokeTestRunnerInterface interface {
-	Build()
+	Build(public1ConficFile, public2ConficFile, private1ConfigFile, private2ConfigFile string)
 	Run()
 }
 
