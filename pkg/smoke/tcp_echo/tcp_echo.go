@@ -157,7 +157,7 @@ func (r *SmokeTestRunner) Setup() {
 func (r *SmokeTestRunner) TearDown() {
 	//since this is going to run in a spawned ci vm (then destroyed) probably
 	//tearDown is not so important
-	publicDeploymentsClient := r.Pub1Cluster.Clientset.AppsV1().Deployments("public")
+	publicDeploymentsClient := r.Pub1Cluster.Clientset.AppsV1().Deployments(r.Pub1Cluster.Namespace)
 	fmt.Println("Deleting deployment...")
 	deletePolicy := metav1.DeletePropagationForeground
 	if err := publicDeploymentsClient.Delete("tcp-go-echo", &metav1.DeleteOptions{
