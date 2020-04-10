@@ -175,7 +175,7 @@ func (r *SmokeTestRunner) TearDown() {
 }
 
 func (r *SmokeTestRunner) Run() {
-	defer r.TearDown()
+	//defer r.TearDown()
 	r.Setup()
 	r.RunTests()
 }
