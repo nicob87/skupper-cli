@@ -206,8 +206,8 @@ jobs:
           command: ./skupper_smoke #set kubeconfig as parameter if needed
 
   http_example_test:
-    machine: true
-    environment: &environment
+    executor: minikube/default
+    #environment: &environment
     steps:
       - run:
           name: export
