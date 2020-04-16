@@ -1,9 +1,214 @@
-version: 2
+version: 2.1
+orbs:
+    minikube: ccpgames/minikube@0.0.1
+
+yaml-templates:
+  branch_filters: &branch_filters
+    filters:
+      branches:
+        only: /.*/
+      tags:
+        only: /[0-9].*/
+
+  release_filters: &release_filters
+    filters:
+      branches:
+        ignore: /.*/
+      tags:
+        only: /[0-9].*/
+
+  restore_go_cache: &restore_go_cache
+    restore_cache:
+      keys:
+        - go-mod-v1-{{.Environment.GOOS}}-{{.Environment.GOARCH}}-{{ checksum "go.sum" }}
+  go_mod_download: &go_mod_download
+    run:
+      name: Download Go Modules
+      command: go mod download
+  save_go_cache: &save_go_cache
+    save_cache:
+      key: go-mod-v1-{{.Environment.GOOS}}-{{.Environment.GOARCH}}-{{ checksum "go.sum" }}
+      paths:
+        - "/go/pkg/mod"
+  compile_go_executable: &compile_go_executable
+    run:
+      name: Compile Go Executable
+      command: |
+        VERSION="${CIRCLE_TAG:-ci-${CIRCLE_BUILD_NUM}}"
+        echo go build -ldflags "-X main.version=${VERSION}" -o dist/${PLATFORM:-${GOOS}-${GOARCH}}/skupper${EXESUFFIX} ./cmd/skupper
+        go build -ldflags "-X main.version=${VERSION}" -o dist/${PLATFORM:-${GOOS}-${GOARCH}}/skupper${EXESUFFIX} ./cmd/skupper
+  store_dist: &store_dist
+    persist_to_workspace:
+      root: .
+      paths:
+        - dist
+workflows:
+  version: 2.1
+  build-workflow:
+    jobs:
+      - build-linux-386:
+          <<: *release_filters
+      #- build-linux-amd64:
+          #<<: *branch_filters
+      - build-darwin-386:
+          <<: *release_filters
+      #- build-darwin-amd64:
+          #<<: *branch_filters
+      - build-windows-386:
+          <<: *release_filters
+      - build-windows-amd64:
+          <<: *branch_filters
+      #- build-linux-arm:
+          #<<: *release_filters
+      #- build-linux-arm64:
+          #<<: *release_filters
+      - test:
+          <<: *branch_filters
+      #- smoke_test:
+          #<<: *branch_filters
+      - http_example_test:
+          <<: *branch_filters
+
+      - publish-github-release:
+          <<: *release_filters
+          requires:
+            #- build-linux-386
+            #- build-linux-amd64
+            #- build-darwin-386
+            #- build-darwin-amd64
+            #- build-windows-386
+            #- build-windows-amd64
+            #- build-linux-arm
+            #- build-linux-arm64
+            #- test
+            #- smoke_test
+            #
+            #
+            - http_example_test
 
 jobs:
-  build:
-    machine:
-      image: circleci/classic:201808-01
+  build-linux-amd64: &go_build
+    docker:
+      - image: circleci/golang:1.13
+    environment: &environment
+      GOOS: linux
+      GOARCH: amd64
+      PLATFORM: linux-amd64
+    steps:
+      - checkout
+      - <<: *restore_go_cache
+      - <<: *go_mod_download
+      - <<: *save_go_cache
+      - <<: *compile_go_executable
+      - <<: *store_dist
+
+  build-linux-386:
+    <<: *go_build
+    environment:
+      GOOS: linux
+      GOARCH: 386
+      PLATFORM: linux-i386
+
+  build-windows-386:
+    <<: *go_build
+    environment:
+      GOOS: windows
+      GOARCH: 386
+      PLATFORM: windows-i386
+      EXESUFFIX: ".exe"
+
+  build-windows-amd64:
+    <<: *go_build
+    environment:
+      GOOS: windows
+      GOARCH: amd64
+      PLATFORM: windows-amd64
+      EXESUFFIX: ".exe"
+
+  build-darwin-386:
+    <<: *go_build
+    environment:
+      GOOS: darwin
+      GOARCH: 386
+      PLATFORM: mac-i386
+
+  build-darwin-amd64:
+    <<: *go_build
+    environment:
+      GOOS: darwin
+      GOARCH: amd64
+      PLATFORM: mac-amd64
+
+  build-linux-arm:
+    <<: *go_build
+    environment:
+      GOOS: linux
+      GOARCH: arm
+      PLATFORM: linux-arm32
+
+  build-linux-arm64:
+    <<: *go_build
+    environment:
+      GOOS: linux
+      GOARCH: arm64
+      PLATFORM: linux-arm64
+
+  test:
+    <<: *go_build
+    steps:
+      - checkout
+      - <<: *restore_go_cache
+      - <<: *go_mod_download
+      - <<: *save_go_cache
+      - run:
+          name: Run Tests
+          command: go test ./...
+
+  smoke_test:
+    machine: true
+    environment: &environment
+    steps:
+      - run:
+          name: export
+          command: |
+            echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV
+            echo 'export GOROOT=/usr/local/go' >> $BASH_ENV
+            echo 'export GOPATH=$HOME/Projects/Proj1' >> $BASH_ENV
+            echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' >> $BASH_ENV
+            source $BASH_ENV
+      - checkout
+      - run:
+          name: install go 1.13
+          command: |
+            wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz
+            sudo tar -xvf go1.13.3.linux-amd64.tar.gz
+            sudo rm -rf /usr/local/go && sudo mv go /usr/local
+      - run:
+          name: print go version
+          command: go version
+      - run:
+          name: get kind
+          command: env GO111MODULE=off go get sigs.k8s.io/kind
+      - run:
+          name: compile
+          command: make
+      - run:
+          name: Create kind cluster
+          command: kind create cluster --wait 30m #bla
+      - run:
+          name: Install kubectl
+          command: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.4/bin/linux/amd64/kubectl && mkdir -p ~/bin && mv kubectl ~/bin/ && chmod +x ~/bin/kubectl
+      - run:
+          name: print cluster info
+          command: kubectl cluster-info
+      - run:
+          name: Run Tests
+          command: ./skupper_smoke #set kubeconfig as parameter if needed
+
+  http_example_test:
+    #executor: minikube/default
+    machine: true
+      #image: ubuntu-1604:201903-01
     environment:
       K8S_VERSION: v1.10.0
       KUBECONFIG: /home/circleci/.kube/config
@@ -13,57 +218,37 @@ jobs:
       MINIKUBE_HOME: /home/circleci
       CHANGE_MINIKUBE_NONE_USER: true
     steps:
+      - run:
+          name: export
+          command: |
+            echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV #not needed?
+            source $BASH_ENV
       - checkout
+      - minikube/initialize
+      #clone the example
       - run:
-          name: setup kubectl
+          name: cluster info
+          command: kubectl cluster-info
+
+  publish-github-release:
+    docker:
+      - image: cibuilds/github:0.10
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: "Create a Draft Release on GitHub"
           command: |
-            curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/${K8S_VERSION}/bin/linux/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-            mkdir -p ${HOME}/.kube
-            touch ${HOME}/.kube/config
-      - run:
-          name: setup minikube
-          command: |
-            curl -Lo minikube https://github.com/kubernetes/minikube/releases/download/${MINIKUBE_VERSION}/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
-      - run:
-          name: setup helm
-          command: curl https://raw.githubusercontent.com/helm/helm/master/scripts/get | bash
-      - run:
-          name: start minikube
-          command: |
-            sudo -E minikube start --vm-driver=none --cpus 2 --memory 2048 --kubernetes-version=${K8S_VERSION} &> $HOME/minikube.log 2>&1 < /dev/null
-      - run:
-          name: wait for minikube
-          command: |
-            JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}';
-            until kubectl get nodes -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do
-              sleep 1;
+            VERSION="$CIRCLE_TAG"
+            BASEDIR=`pwd`
+            mkdir "${BASEDIR}/archives"
+            for p in `ls dist` ; do
+              cd "$BASEDIR/dist/$p"
+              if [[ $p == windows* ]] ; then
+                zip -q "${BASEDIR}/archives/skupper-cli-${VERSION}-$p.zip" *
+              else
+                tar -zcf "${BASEDIR}/archives/skupper-cli-${VERSION}-$p.tgz" *
+              fi
             done
-      - run:
-          name: fix RBAC
-          command: |
-            # make default account cluster-admin
-            kubectl create clusterrolebinding add-on-cluster-admin --clusterrole cluster-admin --serviceaccount=kube-system:default
-      - run:
-          name: dump cluster-info
-          command: |
-            kubectl cluster-info
-            kubectl get po --all-namespaces
-      - run:
-          name: install helm in cluster
-          command: |
-            kubectl -n kube-system create sa tiller
-            kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller
-            helm init --wait --service-account tiller
-      - run:
-          name: deploy sample nginx
-          command: kubectl run circleci-example --image=nginx
-      - run:
-          name: dump pods & services
-          command: |
-            # wait for all pods to start
-            sleep 30
-            # dump pods
-            kubectl get po  --all-namespaces | grep -vE '(kube-sys|docker)'
-            echo
-            # dump services
-            kubectl get svc  --all-namespaces | grep -vE '(kube-sys|docker)'
+            cd ${BASEDIR}
+            ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -replace -prerelease -draft ${VERSION} "${BASEDIR}/archives"
