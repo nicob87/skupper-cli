@@ -208,7 +208,8 @@ jobs:
   http_example_test:
     #executor: minikube/default
     machine: #true
-      image: ubuntu-1604:201903-01
+      #image: ubuntu-1604:201903-01
+      image: circleci/classic:201808-01
     environment:
       K8S_VERSION: v1.10.0
       KUBECONFIG: /home/circleci/.kube/config
