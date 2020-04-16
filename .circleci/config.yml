@@ -225,6 +225,9 @@ jobs:
             echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' >> $BASH_ENV
             source $BASH_ENV
       - checkout
+      - run:
+          name: cleanup previous go installation
+          command: sudo rm -rf /usr/local/go
       - go/install
       - kind-start
       - kube-orb/install-kubectl
