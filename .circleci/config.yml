@@ -25,7 +25,7 @@ commands:
       - run:
           command: >-
             sudo -E minikube start --vm-driver=none --cpus 2 --memory 2048
-            --kubernetes-version=<< parameters.version >> &> $HOME/minikube.log 2>&1
+            &> $HOME/minikube.log 2>&1
             < /dev/null
           name: Start Minikube Cluster
 
