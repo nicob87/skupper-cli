@@ -19,15 +19,25 @@ commands:
             mv minikube /usr/local/bin/
           name: Install Minikube Executable
 
+  install-conntrack:
+    description: Starts the minikube service.
+    steps:
+      - run:
+          command: >-
+            sudo apt-get update -y && sudo apt-get install -y conntrack
+          name: Install conntrack
+
   minikube-start:
     description: Starts the minikube service.
     steps:
+      - install-conntrack
       - run:
           command: >-
             sudo -E minikube start --vm-driver=none --cpus 2 --memory 2048
             &> $HOME/minikube.log 2>&1
             < /dev/null
           name: Start Minikube Cluster
+
 
 yaml-templates:
   branch_filters: &branch_filters
@@ -250,6 +260,7 @@ jobs:
           name: export
           command: |
             echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV #not needed?
+            echo 'CHANGE_MINIKUBE_NONE_USER=true' >> $BASH_ENV #not needed?
             source $BASH_ENV
       - checkout
       - docker/install-docker
