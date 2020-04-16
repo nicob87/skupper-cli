@@ -206,7 +206,9 @@ jobs:
           command: ./skupper_smoke #set kubeconfig as parameter if needed
 
   http_example_test:
-    executor: minikube/default
+    #executor: minikube/default
+    machine: true
+      image: ubuntu-1604:201903-01
     #environment: &environment
     steps:
       - run:
