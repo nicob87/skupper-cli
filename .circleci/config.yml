@@ -1,6 +1,33 @@
 version: 2.1
 orbs:
-    minikube: ccpgames/minikube@0.0.1
+    docker: circleci/docker@1.0.1
+    kube-orb: circleci/kubernetes
+
+commands:
+  minikube-install:
+    description: Installs the minikube executable onto the system.
+    parameters:
+      version:
+        default: v0.30.0
+        type: string
+    steps:
+      - run:
+          command: >-
+            curl -Lo minikube
+            https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && 
+            chmod +x minikube && sudo
+            mv minikube /usr/local/bin/
+          name: Install Minikube Executable
+
+  minikube-start:
+    description: Starts the minikube service.
+    steps:
+      - run:
+          command: >-
+            sudo -E minikube start --vm-driver=none --cpus 2 --memory 2048
+            --kubernetes-version=<< parameters.version >> &> $HOME/minikube.log 2>&1
+            < /dev/null
+          name: Start Minikube Cluster
 
 yaml-templates:
   branch_filters: &branch_filters
@@ -208,12 +235,12 @@ jobs:
   http_example_test:
     #executor: minikube/default
     machine: #true
-      #image: ubuntu-1604:201903-01
-      image: circleci/classic:201808-01
+      image: ubuntu-1604:201903-01
+      #image: circleci/classic:201808-01
     environment:
-      K8S_VERSION: v1.10.0
+      K8S_VERSION: v1.15.3
       KUBECONFIG: /home/circleci/.kube/config
-      MINIKUBE_VERSION: v0.30.0
+      MINIKUBE_VERSION: v1.3.1
       MINIKUBE_WANTUPDATENOTIFICATION: false
       MINIKUBE_WANTREPORTERRORPROMPT: false
       MINIKUBE_HOME: /home/circleci
@@ -225,7 +252,11 @@ jobs:
             echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV #not needed?
             source $BASH_ENV
       - checkout
-      - minikube/initialize
+      - docker/install-docker
+      - kube-orb/install-kubectl
+      - minikube-install
+      - minikube-start
+
       #clone the example
       - run:
           name: cluster info
