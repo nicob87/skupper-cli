@@ -244,7 +244,7 @@ jobs:
       #- kind-start
       - minikube-install
       - minikube-start
-      - minikube-LoadBalancer
+      - minikube-start-load-balancer
       - run:
           name: compile
           command: make
