@@ -6,7 +6,8 @@ orbs:
 
 executors:
   e2e_tets_executor:
-    machine: true
+    machine:
+      image: circleci/classic:latest
       #image: ubuntu-1604:201903-01
     #parameters:
       #LoadBalancer:
