@@ -4,16 +4,16 @@ orbs:
     kube-orb: circleci/kubernetes@0.11.0
     go: circleci/go@1.1.1
 
-#executors:
-  #e2e_tets_executor:
-    #machine: #true
+executors:
+  e2e_tets_executor:
+    machine: true
       #image: ubuntu-1604:201903-01
     #parameters:
       #LoadBalancer:
         ##required
         #type: boolean
-    #steps:
-      #- kube-orb/install-kubectl
+    steps:
+      - kube-orb/install-kubectl
 
 
 commands:
@@ -213,7 +213,8 @@ jobs:
   #we will assume any smoke tests setups and teardown letting the cluster in the
   #same state it was before running the tests
   e2e_tests:
-    machine: true
+    #machine: true
+    executor: e2e_tets_executor
     environment: &environment
     steps:
       - run:
