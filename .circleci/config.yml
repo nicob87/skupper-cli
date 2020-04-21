@@ -13,8 +13,8 @@ executors:
       #LoadBalancer:
         ##required
         #type: boolean
-    steps:
-      - kube-orb/install-kubectl
+    #steps:
+      #- kube-orb/install-kubectl
 
 
 commands:
