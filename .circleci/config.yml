@@ -8,7 +8,7 @@ executors:
   e2e_tets_executor:
     machine:
       image: circleci/classic:latest
-      #image: ubuntu-1604:201903-01
+      #image: ubuntu-1604:201903-01 #newer image available
     #parameters:
       #LoadBalancer:
         ##required
@@ -36,14 +36,21 @@ commands:
   minikube-start:
     description: Starts the minikube service.
     steps:
-      - install-conntrack
+      #- install-conntrack
       - run:
           command: >-
             sudo -E minikube start --vm-driver=docker --cpus 2 --memory 2048
             &> $HOME/minikube.log 2>&1
             < /dev/null
           name: Start Minikube Cluster
-    #minikube-start-load-balancer: #minikube tunnel in background
+
+  minikube-start-load-balancer:
+    description: Starts the minikube tunnel
+    steps:
+      - run:
+          command: >-
+            sudo minikube tunnel &
+          name: Start Minikube Tunnel
 
   kind-start:
     description: install kind cluster
@@ -234,7 +241,10 @@ jobs:
       - docker/install-docker
       - go/install
       - kube-orb/install-kubectl
-      - kind-start
+      #- kind-start
+      - minikube-install
+      - minikube-start
+      - minikube-LoadBalancer
       - run:
           name: compile
           command: make
