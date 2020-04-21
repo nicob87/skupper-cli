@@ -219,8 +219,8 @@ jobs:
   #we will assume any smoke tests setups and teardown letting the cluster in the
   #same state it was before running the tests
   e2e_tests:
-    #machine: true
-    executor: e2e_tets_executor
+    machine: true
+    #executor: e2e_tets_executor
     environment: &environment
     steps:
       - run:
@@ -236,7 +236,7 @@ jobs:
       - run:
           name: cleanup previous go installation
           command: sudo rm -rf /usr/local/go
-      - docker/install-docker
+      #- docker/install-docker
       - go/install
       - kube-orb/install-kubectl
       #- kind-start
