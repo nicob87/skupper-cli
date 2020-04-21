@@ -8,6 +8,13 @@ orbs:
   #e2e_tets_executor:
     #machine: #true
       #image: ubuntu-1604:201903-01
+    #parameters:
+      #LoadBalancer:
+        ##required
+        #type: boolean
+    #steps:
+      #- kube-orb/install-kubectl
+
 
 commands:
   minikube-install:
@@ -35,13 +42,10 @@ commands:
             &> $HOME/minikube.log 2>&1
             < /dev/null
           name: Start Minikube Cluster
+    #minikube-start-load-balancer: #minikube tunnel in background
 
   kind-start:
     description: install kind cluster
-    parameters:
-      LoadBalancer:
-        #required
-        type: boolean
     steps:
       - run:
           name: get kind
