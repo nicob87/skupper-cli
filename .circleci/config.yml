@@ -39,7 +39,7 @@ commands:
       #- install-conntrack
       - run:
           command: >-
-            sudo -E minikube start --vm-driver=docker --cpus 2 --memory 2048
+            minikube start --vm-driver=docker --cpus 2 --memory 2048
           name: Start Minikube Cluster
 
   minikube-start-load-balancer:
