@@ -40,8 +40,6 @@ commands:
       - run:
           command: >-
             sudo -E minikube start --vm-driver=docker --cpus 2 --memory 2048
-            &> $HOME/minikube.log 2>&1
-            < /dev/null
           name: Start Minikube Cluster
 
   minikube-start-load-balancer:
