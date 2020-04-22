@@ -8,14 +8,6 @@ executors:
   e2e_tets_executor:
     machine:
       image: circleci/classic:latest
-      #image: ubuntu-1604:201903-01 #newer image available
-    #parameters:
-      #LoadBalancer:
-        ##required
-        #type: boolean
-    #steps:
-      #- kube-orb/install-kubectl
-
 
 commands:
   minikube-install:
@@ -36,7 +28,6 @@ commands:
   minikube-start:
     description: Starts the minikube service.
     steps:
-      #- install-conntrack
       - run:
           command: >-
             minikube start --vm-driver=docker --cpus 2 --memory 2048
@@ -60,13 +51,40 @@ commands:
           name: Create kind cluster
           command: kind create cluster --wait 30m
 
+  prepare_for_local_cluster_e2e:
+    description: install right versions of go, docker, kubectl, and also build
+    steps:
+      - run:
+          #TODO add a comment saying why is this needed.
+          name: Export environment variables persistent in execution shell
+          command: |
+            echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV
+            echo 'export GOROOT=/usr/local/go' >> $BASH_ENV
+            echo 'export GOPATH=$HOME/go' >> $BASH_ENV
+            echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' >> $BASH_ENV
+            source $BASH_ENV
+      - checkout
+      - run:
+          name: cleanup previous go installation
+          command: sudo rm -rf /usr/local/go
+      - docker/install-docker
+      - go/install
+      - kube-orb/install-kubectl
+      - run: make
+
+  #we will assume any smoke tests setups and teardown letting the cluster in the
+  #same state it was before running the tests
   run_e2e_tests:
     description: run all e2e tests inside the current KUBECONFIG configured cluster
     #In this step is where we execute shipshape, ginkgo, kubetest or whatever.
+    parameters:
+      args:
+        default: ""
+        type: string
     steps:
       - run:
           name: Run Tests
-          command: ./skupper_smoke #set kubeconfig as parameter if needed
+          command: ./skupper_smoke #not supported for now << parameters.args >>
 
 
 yaml-templates:
@@ -133,10 +151,15 @@ workflows:
       - test:
           <<: *branch_filters
 
-  e2e_workflow:
-    jobs:
-      - e2e_tests:
+      - minikube_local_cluster_e2e_tests:
           <<: *branch_filters
+          pre-steps:
+            - prepare_for_local_cluster_e2e
+
+      - kind_local_cluster_e2e_tests:
+          <<: *branch_filters
+          pre-steps:
+            - prepare_for_local_cluster_e2e
 
 jobs:
   build-linux-amd64: &go_build
@@ -216,37 +239,22 @@ jobs:
           name: Run Tests
           command: go test ./...
 
-  #we will assume any smoke tests setups and teardown letting the cluster in the
-  #same state it was before running the tests
-  e2e_tests:
-    machine: true
-    #executor: e2e_tets_executor
+  minikube_local_cluster_e2e_tests:
+    executor: e2e_tets_executor
     environment: &environment
     steps:
-      - run:
-          #TODO add a comment saying why is this needed.
-          name: Export environment variables persistent in execution shell
-          command: |
-            echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV
-            echo 'export GOROOT=/usr/local/go' >> $BASH_ENV
-            echo 'export GOPATH=$HOME/go' >> $BASH_ENV
-            echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' >> $BASH_ENV
-            source $BASH_ENV
-      - checkout
-      - run:
-          name: cleanup previous go installation
-          command: sudo rm -rf /usr/local/go
-      #- docker/install-docker
-      - go/install
-      - kube-orb/install-kubectl
-      #- kind-start
       - minikube-install
       - minikube-start
       - minikube-start-load-balancer
-      - run:
-          name: compile
-          command: make
-      - run:
-          name: print cluster info
-          command: kubectl cluster-info
+      - run: kubectl cluster-info
       - run_e2e_tests
+          args: "" #no cluster local since minikube has load balancer
+
+  kind_local_cluster_e2e_tests:
+    executor: e2e_tets_executor
+    environment: &environment
+    steps:
+      - kind-start
+      - run: kubectl cluster-info
+      - run_e2e_tests:
+          args: "--cluster-local" #cluster local since kind has no load balancer
