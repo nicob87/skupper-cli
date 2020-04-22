@@ -247,7 +247,7 @@ jobs:
       - minikube-start
       - minikube-start-load-balancer
       - run: kubectl cluster-info
-      - run_e2e_tests
+      - run_e2e_tests:
           args: "" #no cluster local since minikube has load balancer
 
   kind_local_cluster_e2e_tests:
