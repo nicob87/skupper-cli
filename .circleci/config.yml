@@ -1,4 +1,92 @@
-version: 2
+version: 2.1
+orbs:
+    docker: circleci/docker@1.0.1
+    kube-orb: circleci/kubernetes@0.11.0
+    go: circleci/go@1.1.1
+
+executors:
+  e2e_tets_executor:
+    machine:
+      image: circleci/classic:latest
+
+commands:
+  minikube-install:
+    description: Installs the minikube executable onto the system.
+    parameters:
+      version:
+        default: v0.30.0
+        type: string
+    steps:
+      - run:
+          command: >-
+            curl -Lo minikube
+            https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && 
+            chmod +x minikube && sudo
+            mv minikube /usr/local/bin/
+          name: Install Minikube Executable
+
+  minikube-start:
+    description: Starts the minikube service.
+    steps:
+      - run:
+          command: >-
+            minikube start --vm-driver=docker --cpus 2 --memory 2048
+          name: Start Minikube Cluster
+
+  minikube-start-load-balancer:
+    description: Starts the minikube tunnel
+    steps:
+      - run:
+          command: >-
+            sudo minikube tunnel &
+          name: Start Minikube Tunnel
+
+  kind-start:
+    description: install kind cluster
+    steps:
+      - run:
+          name: get kind
+          command: env GO111MODULE=off go get sigs.k8s.io/kind
+      - run:
+          name: Create kind cluster
+          command: kind create cluster --wait 30m
+
+  prepare_for_local_cluster_e2e:
+    description: install right versions of go, docker, kubectl, and also build
+    steps:
+      - run:
+          #TODO add a comment saying why is this needed.
+          name: Export environment variables persistent in execution shell
+          command: |
+            echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV
+            echo 'export GOROOT=/usr/local/go' >> $BASH_ENV
+            echo 'export GOPATH=$HOME/go' >> $BASH_ENV
+            echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' >> $BASH_ENV
+            source $BASH_ENV
+      - checkout
+      - run:
+          name: cleanup previous go installation
+          command: sudo rm -rf /usr/local/go
+      - docker/install-docker
+      - go/install
+      - kube-orb/install-kubectl
+      - run: make
+
+  #we will assume any smoke tests setups and teardown letting the cluster in the
+  #same state it was before running the tests
+  run_e2e_tests:
+    description: run all e2e tests inside the current KUBECONFIG configured cluster
+    #In this step is where we execute shipshape, ginkgo, kubetest or whatever.
+    parameters:
+      args:
+        default: ""
+        type: string
+    steps:
+      - run:
+          name: Run Tests
+          command: ./skupper_smoke #not supported for now << parameters.args >>
+
+
 yaml-templates:
   branch_filters: &branch_filters
     filters:
@@ -14,7 +102,7 @@ yaml-templates:
       tags:
         only: /[0-9].*/
 
-  restore_go_cache: &restore_go_cache
+  restore_go_cach: &restore_go_cache
     restore_cache:
       keys:
         - go-mod-v1-{{.Environment.GOOS}}-{{.Environment.GOARCH}}-{{ checksum "go.sum" }}
@@ -40,43 +128,38 @@ yaml-templates:
       paths:
         - dist
 workflows:
-  version: 2
+  version: 2.1
+  #create the "test workflow"
   build-workflow:
     jobs:
       - build-linux-386:
           <<: *release_filters
-      - build-linux-amd64:
-          <<: *branch_filters
+      #- build-linux-amd64:
+          #<<: *branch_filters
       - build-darwin-386:
           <<: *release_filters
-      - build-darwin-amd64:
-          <<: *branch_filters
+      #- build-darwin-amd64:
+          #<<: *branch_filters
       - build-windows-386:
           <<: *release_filters
       - build-windows-amd64:
           <<: *branch_filters
-      - build-linux-arm:
-          <<: *release_filters
-      - build-linux-arm64:
-          <<: *release_filters
+      #- build-linux-arm:
+          #<<: *release_filters
+      #- build-linux-arm64:
+          #<<: *release_filters
       - test:
           <<: *branch_filters
-      - smoke_test:
-          <<: *branch_filters
 
-      - publish-github-release:
-          <<: *release_filters
-          requires:
-            - build-linux-386
-            - build-linux-amd64
-            - build-darwin-386
-            - build-darwin-amd64
-            - build-windows-386
-            - build-windows-amd64
-            - build-linux-arm
-            - build-linux-arm64
-            - test
-            - smoke_test
+      - minikube_local_cluster_e2e_tests:
+          <<: *branch_filters
+          pre-steps:
+            - prepare_for_local_cluster_e2e
+
+      - kind_local_cluster_e2e_tests:
+          <<: *branch_filters
+          pre-steps:
+            - prepare_for_local_cluster_e2e
 
 jobs:
   build-linux-amd64: &go_build
@@ -156,66 +239,22 @@ jobs:
           name: Run Tests
           command: go test ./...
 
-  smoke_test:
-    machine: true
+  minikube_local_cluster_e2e_tests:
+    executor: e2e_tets_executor
     environment: &environment
     steps:
-      - run:
-          name: export
-          command: |
-            echo 'export KUBECONFIG=/home/circleci/.kube/config' >> $BASH_ENV
-            echo 'export GOROOT=/usr/local/go' >> $BASH_ENV
-            echo 'export GOPATH=$HOME/Projects/Proj1' >> $BASH_ENV
-            echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' >> $BASH_ENV
-            source $BASH_ENV
-      - checkout
-      - run:
-          name: install go 1.13
-          command: |
-            wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz
-            sudo tar -xvf go1.13.3.linux-amd64.tar.gz
-            sudo rm -rf /usr/local/go && sudo mv go /usr/local
-      - run:
-          name: print go version
-          command: go version
-      - run:
-          name: get kind
-          command: env GO111MODULE=off go get sigs.k8s.io/kind
-      - run:
-          name: compile
-          command: make
-      - run:
-          name: Create kind cluster
-          command: kind create cluster --wait 30m #bla
-      - run:
-          name: Install kubectl
-          command: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.4/bin/linux/amd64/kubectl && mkdir -p ~/bin && mv kubectl ~/bin/ && chmod +x ~/bin/kubectl
-      - run:
-          name: print cluster info
-          command: kubectl cluster-info
-      - run:
-          name: Run Tests
-          command: ./skupper_smoke #set kubeconfig as parameter if needed
+      - minikube-install
+      - minikube-start
+      - minikube-start-load-balancer
+      - run: kubectl cluster-info
+      - run_e2e_tests:
+          args: "" #no cluster local since minikube has load balancer
 
-  publish-github-release:
-    docker:
-      - image: cibuilds/github:0.10
+  kind_local_cluster_e2e_tests:
+    executor: e2e_tets_executor
+    environment: &environment
     steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: "Create a Draft Release on GitHub"
-          command: |
-            VERSION="$CIRCLE_TAG"
-            BASEDIR=`pwd`
-            mkdir "${BASEDIR}/archives"
-            for p in `ls dist` ; do
-              cd "$BASEDIR/dist/$p"
-              if [[ $p == windows* ]] ; then
-                zip -q "${BASEDIR}/archives/skupper-cli-${VERSION}-$p.zip" *
-              else
-                tar -zcf "${BASEDIR}/archives/skupper-cli-${VERSION}-$p.tgz" *
-              fi
-            done
-            cd ${BASEDIR}
-            ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -replace -prerelease -draft ${VERSION} "${BASEDIR}/archives"
+      - kind-start
+      - run: kubectl cluster-info
+      - run_e2e_tests:
+          args: "--cluster-local" #cluster local since kind has no load balancer
